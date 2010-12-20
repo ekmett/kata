@@ -1,9 +1,10 @@
 package kata
 
 import java.lang.Character
+import java.lang.Integer
 import java.lang.CharSequence
 import scala.collection.mutable._
-import scala.util.parsing.combinator._
+import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input.Position
 import scala.util.parsing.input.Reader
 import scala.util.parsing.input.CharSequenceReader
@@ -14,9 +15,21 @@ case object BracedLayout extends LayoutContext
 
 trait LayoutToken 
 object LayoutToken { 
-  case object VSemi extends LayoutToken
-  case object VBrace extends LayoutToken
-  case class  Other(char: Char) extends LayoutToken
+  case object VSemi extends LayoutToken {
+    override def toString = "virtual semicolon"
+  }
+  case object VBrace extends LayoutToken {
+    override def toString = "virtual right brace"
+  }
+  case class Other(char: Char) extends LayoutToken { 
+    override def toString = 
+      if (Character.isLetterOrDigit(char) && char < 128)
+        "'" + char + "'"
+      else if (char == ' ')
+        "whitespace" 
+      else 
+         "'\\" + Integer.toOctalString(char) + "'"
+  }
 }
 
 case class LayoutPosition(underlying: Position, layoutStack: List[LayoutContext], bol: Boolean) extends Position {
@@ -31,7 +44,6 @@ case class LayoutPosition(underlying: Position, layoutStack: List[LayoutContext]
               underlying.line == that.line && underlying.column < that.column
   } 
 }
-
 trait LayoutParsers extends Parsers {
   import LayoutToken._
 
@@ -39,7 +51,7 @@ trait LayoutParsers extends Parsers {
 
   case class LayoutReader(
     underlying: Input,
-    layoutStack: List[LayoutContext] = List(IndentedLayout(0)),
+    layoutStack: List[LayoutContext] = List(IndentedLayout(1)),
     bol: Boolean = false,
     recursionHeads: HashMap[LayoutPosition, Head] = HashMap.empty,
     cache: HashMap[(Parser[_], LayoutPosition), MemoEntry[_]] = HashMap.empty
@@ -74,7 +86,7 @@ trait LayoutParsers extends Parsers {
   
   override def phrase[T](p: Parser[T]) = {
     val q = super.phrase(p <~ endOfLayout)
-    new LayoutParser[T] {
+    new PackratParser[T] {
       def apply(in: Input) = in match {
         case in: LayoutReader => q(in)
         case in => q(new LayoutReader(in))
@@ -112,14 +124,14 @@ trait LayoutParsers extends Parsers {
   /** 
    * The root class of packrat parsers. 
    */
-  abstract class LayoutParser[+T] extends super.Parser[T]
+  abstract class PackratParser[+T] extends Parser[T]
   
   /**
    * Implicitly convert a parser to a packrat parser.
    * The conversion is triggered by giving the appropriate target type: 
-   * val myParser: LayoutParser[MyResult] = aParser
+   * val myParser: PackratParser[MyResult] = aParser
    */
-  implicit def parser2layout[T](p: => super.Parser[T]): LayoutParser[T] = {
+  implicit def parser2packrat[T](p: => super.Parser[T]): PackratParser[T] = {
     lazy val q = p
     memo(super.Parser {in => q(in)})
   }
@@ -208,8 +220,8 @@ to update each parser involved in the recursion.
    * In most cases, client code should avoid calling <code>memo</code> directly
    * and rely on implicit conversion instead.
    */
-  def memo[T](p: super.Parser[T]): LayoutParser[T] = {
-    new LayoutParser[T] {
+  def memo[T](p: super.Parser[T]): PackratParser[T] = {
+    new PackratParser[T] {
       def apply(in: Input) = {
         /*
          * transformed reader
@@ -288,9 +300,8 @@ to update each parser involved in the recursion.
     }
   }
 
-
   private def newline: Parser[Char] = elem("newline", _ == '\n')
-  private def anyChar: Parser[Char] = elem("any", _ => true)
+  private def anyChar: Parser[Char] = more ~> elem("any", _ => true)
   private def realSpace: Parser[Char] = elem("whiteSpace", Character.isWhitespace)
 
   def LayoutParser[T](f: LayoutReader => ParseResult[T]): Parser[T] =
@@ -312,22 +323,24 @@ to update each parser involved in the recursion.
 
   implicit def string(s: String) : Parser[String] = 
     (success(()) /: s)((s: Parser[Unit], c: Char) => s <~ char(c)) ~> success(s)
+
   implicit def char(c: Char) : Parser[Char] = elem(c)
 
   private object Layout { 
-    def nested(side: Boolean): Parser[Boolean]
-      = (string("-}") ~> success(side))
-      //  | (string("{-") ~> (nested(side) flatMap nested))
-      //  | (newline ~> nested(true))
-      //  | (anyChar ~> nested(side))
+    def nested(side: Boolean): Parser[Boolean] = 
+      ("-}" ~> success(side)) | 
+      (string("{-") ~> (nested(side) flatMap nested)) | 
+      (newline ~> nested(true)) | 
+      (anyChar ~> nested(side))
     def comment: Parser[LayoutToken] 
       = string("--") ~> rep(not(newline)) ~> newline ~> whiteSpace(true, true)
-    def whiteSpace(spaced: Boolean, side: Boolean): Parser[LayoutToken]
-      = (string("{-") ~> (nested(side).flatMap(k => whiteSpace(true, k))))
-      //  | comment
-      //  | (char('\n') ~> whiteSpace(true, true))
-      //  | (realWhitespace ~> whiteSpace(true, false))
-      //  | (if (side) offside(spaced) else onside (spaced))
+    def realWhitespace = rep1(elem("spaces", java.lang.Character.isWhitespace))
+    def whiteSpace(spaced: Boolean, side: Boolean): Parser[LayoutToken] = 
+      (string("{-") ~> (nested(side).flatMap(k => whiteSpace(true, k)))) | 
+      comment |
+      (char('\n') ~> whiteSpace(true, true)) | 
+      (realWhitespace ~> whiteSpace(true, false)) |
+      (if (side) offside(spaced) else onside (spaced))
     def offside(spaced: Boolean): Parser[LayoutToken] = LayoutParser(input => { 
       val layoutDepth = input.depth
       val col = input.pos.column
@@ -340,37 +353,51 @@ to update each parser involved in the recursion.
       }
     })
     def onside(spaced: Boolean): Parser[LayoutToken] = 
-      if (spaced)
+      if (spaced) {
         success(Other(' '))
-      else
-        setBol(false) ~> anyChar.map(Other(_))
+      } else { 
+        setBol(false) ~> (trailingVBrace | anyChar.map(Other(_)))
+      }
     def getBol: Parser[Boolean] = LayoutParser(input => Success(input.bol, input))
   }
 
+  def more: Parser[Unit] = LayoutParser(input => 
+    if (input.atEnd)
+      Failure("eof", input)
+    else
+      Success((), input)
+  )
+
   def layout: Parser[LayoutToken] = memo(Layout.getBol flatMap (bol => Layout.whiteSpace(false, bol)))
 
+  def trailingVBrace: Parser[LayoutToken] = LayoutParser(input => {
+      if (input.atEnd && input.layoutStack.length > 1 && input.top.isInstanceOf[IndentedLayout])
+        Success(VBrace,input.pop)
+      else
+        Failure("expected virtual right brace", input)
+  })
+    
   def virtualLeftBrace: Parser[Unit] = LayoutParser(input =>  
     Success((), input.push(IndentedLayout(input.pos.column max input.depth)))
   ) named "indentation"
 
-  def virtualRightBrace: Parser[Unit] = layout ^? { case VBrace => () } named "outdentation"
+  def virtualRightBrace: Parser[Unit] = layout ^? ({ case VBrace => () }, s => "expected outdent, not " + s)
 
-  def semi: Parser[Char] = layout ^? { 
+  def semi: Parser[Char] = layout ^? ({ 
     case VSemi => ';'
     case Other(';') => ';'
-  } named "semi"
+  }, s => "expected semi-colon, not " + s)
 
   def leftBrace: Parser[Char] = '{' <~ pushContext(BracedLayout)
   def rightBrace: Parser[Char] = popContext("expected right brace", _ == BracedLayout) ~> '}'
 
-  def space: Parser[Char] = layout ^? { case Other(' ') => ' ' } named "space"
+  def space: Parser[Char] = layout ^? ({ case Other(' ') => ' ' }, s => "expected space, not " + s)
 
   def spaced[T](p : Parser[T]) = p <~ opt(space)
 
   def laidout[T](p: Parser[T]): Parser[List[T]] = {
-    val ps = repsep(p, spaced(semi))
-    (spaced(leftBrace) ~> ps <~ spaced(rightBrace)) | 
-    (spaced(virtualLeftBrace) ~> ps <~ spaced(virtualRightBrace))
+    (spaced(leftBrace) ~> repsep(p, spaced(';')) <~ spaced(rightBrace)) | 
+    (spaced(virtualLeftBrace) ~> repsep(p, spaced(semi)) <~ spaced(virtualRightBrace))
   }
 
   def parse[T](p: Parser[T], in: Reader[Char]): ParseResult[T] = p(LayoutReader(in))
