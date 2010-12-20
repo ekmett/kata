@@ -6,7 +6,7 @@ The source code for Kata is hosted on GitHub: http://github.com/ekmett/kata
 
 Documentation and downloads are on Google Code: http://github.com/ekmett/kata
 
-Snapshots and Releases published to the repository on scala-tools.org.
+Snapshots and Releases published to the repository at maven.comonad.com
 
 Build Instructions
 ------------------
