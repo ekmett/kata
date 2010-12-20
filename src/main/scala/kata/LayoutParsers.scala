@@ -95,7 +95,7 @@ trait LayoutParsers extends Parsers {
   }
 
   private def endOfLayout: Parser[Unit] = LayoutParser(input => 
-    if (input.layoutStack.length > 1)
+    if (input.atEnd && input.layoutStack.length > 1)
       Failure("unfinished layout", input)
     else
       Success((), input)
@@ -339,8 +339,8 @@ to update each parser involved in the recursion.
       (string("{-") ~> (nested(side).flatMap(k => whiteSpace(true, k)))) | 
       comment |
       (char('\n') ~> whiteSpace(true, true)) | 
-      (realWhitespace ~> whiteSpace(true, false)) |
-      (if (side) offside(spaced) else onside (spaced))
+      (realWhitespace ~> whiteSpace(true, side)) |
+      (if (side) offside(spaced) else onside(spaced))
     def offside(spaced: Boolean): Parser[LayoutToken] = LayoutParser(input => { 
       val layoutDepth = input.depth
       val col = input.pos.column
