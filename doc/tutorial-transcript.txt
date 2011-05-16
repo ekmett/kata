@@ -1,0 +1,243 @@
+12:10:40 AM edwardk: kata is best thought about as a natural consequence of removing the types from a haskell-like language
+12:10:51 AM danharaj: what do you mean by that?
+12:11:03 AM edwardk: well, take a haskell program. remove the type system, what happens?
+12:11:09 AM edwardk: you lose type classes for one
+12:11:15 AM danharaj: that's true yes
+12:11:25 AM danharaj: I don't think anything else happens?
+12:11:56 AM edwardk: because those are the principal feature of a haskell program that is handled 'ala church'
+12:12:30 AM edwardk: its the main thing. you lose a crap ton of safety, etc. as well =)
+12:12:41 AM danharaj: Why is that?
+12:12:50 AM danharaj: I never thought hard about the difference between church and curry style.
+12:13:50 AM edwardk: so if we lose typeclasses, we need something to replace them, from a code reuse perspective and from a 'which ord instance do i mean?' perspective
+12:14:04 AM Mathnerd314: dynamic dispatch!
+12:14:06 AM edwardk: so i turn to a module system
+12:14:15 AM edwardk: boo! hiss! =)
+12:14:26 AM Mathnerd314: multimethods!
+12:14:40 AM danharaj: dependent typing!
+12:14:43 AM edwardk: multimethods are actually right out for reasons that will be apparent ;)
+12:14:53 AM edwardk: well, dependent typing is more like doubling down on the typing front ;)
+12:15:03 AM danharaj: :p all or nothing baby
+12:15:11 AM edwardk: hence nothing ;)
+12:15:22 AM danharaj: but never just one
+12:15:26 AM danharaj: *glares at Ruby*
+12:15:40 AM Mathnerd314: danharaj: I don't think dependent types will let you disambiguate (<)
+12:16:08 AM edwardk: Mathnerd314: it will, it'll just require you to manually plumb in your meaning.
+12:16:25 AM danharaj: Mathnerd314: Make a type constructor that takes a type and a comparison function on it. And for every type, generate functions that 'cast' them to their type equipped with a comparison.
+12:16:38 AM edwardk: and you'll lose inference, because you'll have passed the magic threshold at which damas-milner style type inference can work
+12:16:47 AM danharaj: type inference pff
+12:16:54 AM danharaj: That's for babies.
+12:17:06 AM Mathnerd314: danharaj: but you aren't actually replacing type classes with dependent types
+12:17:30 AM danharaj: Mathnerd314: It depends on what you mean by replace. :p
+12:17:33 AM danharaj: anywho
+12:17:35 AM danharaj: what does Kata do?
+12:17:40 AM edwardk: =)
+12:18:15 AM edwardk: so, having thrown out the usual use of the type system, dictionaries are just objects like any other and are passed around like terms
+12:18:28 AM danharaj: mhm
+12:19:07 AM edwardk: class functor public map — simply says that functor is a type of object that has a member named map, it doesn't enforce any type on that member for instance.
+12:19:32 AM Mathnerd314: so... you have an object type?
+12:19:33 AM edwardk: id = new functor with map x = x
+12:19:48 AM Mathnerd314: ( / record)
+12:20:32 AM edwardk: operationally, basically the whole system runs on a spineless tagless g-machine, enriched with the ability to ask for members of a closure.
+12:20:54 AM danharaj: edwardk: you don't think you could make a type system for this arrangement?
+12:20:57 AM edwardk: bar = id.map foo
+12:21:08 AM edwardk: no, actually i don't
+12:21:21 AM edwardk: i use a type system, but not to check traditional properties
+12:21:29 AM edwardk: i could build one, but i could NEVER infer it
+12:21:43 AM edwardk: and that would render the result a language i wouldn't want to program in
+12:22:01 AM edwardk: i _do_ have types.
+12:22:13 AM edwardk: but they don't provide everything you are used to =)
+12:22:29 AM danharaj: I just want to know that function application makes sense :[
+12:23:27 AM edwardk: function application does make sense, i even have some types for dealing with various unboxed values, etc.
+12:23:44 AM danharaj: so what properties won't your types tell me?
+12:23:47 AM edwardk: the type system mostly exists to check that when i use 'new' that i fully define the contents of an object
+12:24:04 AM edwardk: i don't actually check that field access accesses a field that is present, or that you won't get a stuck application
+12:24:46 AM edwardk: i will however complain at you if you try to inherit mutually contradictory properties, or if you don't specify the width of your rectangle
+12:25:34 AM Mathnerd314: what is the stuff on github? snapshot of a Haskell port?
+12:25:42 AM edwardk: from the perspective of a more traditional oop system, i don't provide you with the ability to ask 'isa?' questions, as they allow you to violate liskov substitution
+12:26:22 AM edwardk: it was a small skeleton of a compiler i put up there for reference for pchiusano who is currently hacking on the language
+12:27:06 AM edwardk: lets try to work through a bigger example, something more traditional
+12:27:19 AM edwardk: class rectangle public width; height; area = width * height
+12:27:39 AM edwardk: public, private, with all open layout rules a la haskell
+12:28:14 AM edwardk: given a class in scope, we can instantiate it with new. foo = new rectangle with width = 12; height = 100
+12:29:01 AM edwardk: and you can dereference members using . — there are some funny lexical rules around the use spaces around . for precedence, but we'll ignore them for now
+12:29:21 AM edwardk: foo.height — returns 100, foo.area yields 1200, 
+12:29:35 AM edwardk: objects are defined to be lazy. 'new' actually ties the knot on their definition
+12:30:17 AM edwardk: we can subclass, which refines our definition, defining the meaning of members and letting us add more fields, properties, laws, etc. as we go
+12:30:38 AM edwardk: class square : rectangle unifies width = height
+12:30:59 AM edwardk: unifies is a section, like public, private, etc.
+12:31:05 AM edwardk: but it has a special meaning
+12:31:45 AM Mathnerd314: so you don't have Self-ish objects?
+12:31:46 AM edwardk: an object has its members, which you can think of like a dictionary mapping the member names to contents
+12:32:33 AM edwardk: unifies says that the fields you unify are actually the same field. one definition for either one suffices for both. attempting to define both will actually cause you to collide
+12:33:10 AM edwardk: in some sense it captures the spirit of self, but not the implementation of self
+12:34:06 AM edwardk: so far so good?
+12:34:12 AM danharaj: yes
+12:34:15 AM edwardk: bar = new square with width = 100
+12:34:22 AM edwardk: will let you access bar.height just fine
+12:34:52 AM edwardk: now to play with things a bit. we can partially define our members too
+12:35:54 AM edwardk: class rectangle as this public { width; height; area = width * height; flipped : rectangle } unifies { flipped.width = height; flipped.height = width; flipped.flipped = this } 
+12:36:30 AM edwardk: note that unifies there is unifying fields of a member that i haven't fully defined yet
+12:37:23 AM edwardk: had i not said flipped.flipped = this, it would still work actually, but this way, if you chain flipped you don't keep getting new objects
+12:38:06 AM edwardk: now given class square : rectangle unifies width = height
+12:38:18 AM edwardk: foo = new square with width = 12
+12:38:33 AM edwardk: baz = foo.flipped.width — will work, because unification will hold transitively
+12:38:46 AM danharaj: heavyyyy
+12:38:48 AM edwardk: we merged the definition of flipped.width and height, and height with width
+12:39:35 AM edwardk: (and had i forgot something the type checker that I _do_ have, would complain at me that i hadn't fully defined my square)
+12:39:47 AM edwardk: even if i had forgotten part of one of its members
+12:40:45 AM edwardk: class colored rectangle public { color; flipped : colored rectangle } unifies { color = flipped.color }
+12:41:02 AM edwardk: now we can introduce adjectives, which act like mixin traits
+12:41:10 AM edwardk: rather, context-sensitive mixin traits
+12:41:30 AM edwardk: a class name is actually a set of adjectives followed by a noun.
+12:41:52 AM danharaj: It feels like this goes significantly beyond classes.
+12:42:11 AM edwardk: when i say 'foo = new { bunch of adjectives } noun' — what i'm doing is saying go look through all the class definitions in scope
+12:42:18 AM edwardk: and merge them together
+12:42:45 AM edwardk: quux = new colored square with width = 12; color = Red — will work just fine
+12:42:58 AM edwardk: merging the definitions from rectangle, colored rectangle, and square
+12:43:34 AM edwardk: it takes things in an interesting direction, and it can do so here because i've _given something up_
+12:43:43 AM edwardk: namely you have no test to ask if something is a member of a given class
+12:44:09 AM edwardk: you can't ask if a value you have is a square or a rectangle. that would let you distinguish the subclass from the super
+12:44:32 AM edwardk: we can introduce it locally, by using 'data' declarations rather than classes, however.
+12:44:52 AM edwardk: (then we'll see how we can make new into sugar)
+12:45:13 AM edwardk: data Red — makes up a new constructor named Red
+12:45:32 AM edwardk: general rules of haskell constructors apply, uppercase, they have fields
+12:45:36 AM edwardk: etc.
+12:45:48 AM danharaj: ok
+12:45:57 AM edwardk: you can pattern match on data constructors. but they all live in one gigantic sum type
+12:46:18 AM edwardk: (this idea can be relaxed later)
+12:46:38 AM edwardk: so we could have made an explicit
+12:47:35 AM edwardk: data Complex x y public magnitude = sqrt (x^2 + y^2)
+12:47:54 AM edwardk: but these are not very common
+12:48:25 AM edwardk: because now foo (Complex a b) = … can be dropped in as a special case in any function, weakening parametricity
+12:49:48 AM edwardk: in fact, when i say 'new', what happens is i make up a data type, i just never tell anyone its name, and i capture as much of the environment as needed to define its body and merge the various class definitions in scope to figure out what the flat form of that data type's members should be.
+12:50:04 AM edwardk: since i never tell anyone the name of the data type, nobody can pattern match on it
+12:50:32 AM danharaj: mm that's good
+12:50:38 AM edwardk: data types preserve the invariant that pattern matching on one, and then reconstructing it shouldn't lose any information
+12:50:58 AM edwardk: foo (Complex a b) = Complex a b — doesn't cost you any information
+12:51:17 AM edwardk: but with a class you can't repack things that way
+12:52:18 AM edwardk: (we can introduce a notion of fields, which permit a haskell-like record mutation syntax, even for classes, but they come at the cost of liskov substitutability in logical subclasses, since you can't unify fields!)
+12:52:50 AM edwardk: consider what would happen with the relationship between rectangle and square if i permitted record-like mutation of width or height
+12:53:45 AM edwardk: now, given all this class machinery, what we use it for is building modules
+12:53:53 AM edwardk: to avoid repeating ourselves
+12:54:30 AM edwardk: class category public id; (.); dual : category; ...
+12:54:41 AM edwardk: should look similar to rectangle
+12:56:39 AM edwardk: we build up functor, monad, etc. using the same ideas
+12:57:58 AM edwardk: and we work by passing around dictionaries for working with appropriate objects rather than by baking our methods into the objects of our monads ourselves
+12:59:13 AM danharaj: I see.
+12:59:24 AM edwardk: reader = new monad with return a _ = a; bind f g a = f (g a) a
+12:59:33 AM danharaj: I've always found the Square-Rectangle problem to be fishy.
+12:59:47 AM edwardk: well, its sound in a land without mutation
+12:59:58 AM edwardk: its mutation that breaks you out of the realm of mathematics
+1:00:41 AM danharaj: well, I don't see why functions that break the class distinction don't just get types that say they might break  it.
+1:00:46 AM edwardk: being in a lazy language, we tie the knot with laziness, rather than mutation, and immutability gives us a stronger liskov substitutability principle
+1:01:28 AM danharaj: stretchx :: Float -> Rectangle -> Rectangle, stretchx :: Float -> Square -> Rectangle
+1:01:28 AM edwardk: well, the problem with mutation in situ is that you can't change their type appropriately to mark the effect
+1:01:59 AM edwardk: and with that version, how do you deal with stretching colored rectangles, etc.
+1:02:07 AM edwardk: because the color covaries
+1:02:40 AM danharaj: edwardk: hmm. I wonder if it's tractable to work out how unify affects substitutability.
+1:02:43 AM edwardk: and finally, you now incur a great deal of case analysis in implementing that
+1:03:09 AM edwardk: your code now has to look at a bunch of constructors, and figure out which one it has and work out which one its building, etc.
+1:03:24 AM edwardk: so it has an ugly operational consequence
+1:03:34 AM danharaj: hmm
+1:03:39 AM edwardk: disallowing mutation fixes liskov without complex case analysis
+1:04:02 AM danharaj: yeah, screw mutation who needs it
+1:04:05 AM edwardk: =)
+1:04:49 AM edwardk: i keep 'field' around for the cases where you really want it, but its mostly useful for particular state terms you are carrying around and mutating. mostly stuff that SHOULD be data anyways
+1:05:02 AM edwardk: but it at least lets you work somewhat polymorphically
+1:08:01 AM edwardk: beyond that the only interesting bits are that there is no system-wide notion of equality enforced, source files themselves are just 'new' declarations, namespaces are data too, and you can define classes locally inside of lambdas, etc. but not data.
+1:08:29 AM edwardk: (since data can't capture anything from its environment)
+1:08:42 AM danharaj: ah, but is it webscale?
+1:08:44 AM edwardk: lest you violate the foo (Bar x y z) = Bar x y z
+1:08:47 AM edwardk: hah
+1:09:06 AM edwardk: that is an operational consideration beyond the scope of the current discussion ;)
+1:09:18 AM danharaj: I'm not sure I get your approach. :p
+1:09:25 AM edwardk: how so?
+1:09:36 AM danharaj: It's late and I'm not thinking hard.
+1:09:45 AM edwardk: i'm trying to find a rather large fragment i pasted up before for someone
+1:09:58 AM danharaj: The way I would do away with type classes is to make it really easy to decorate and undecorate types with values.
+1:10:53 AM edwardk: "decorate types with values"?
+1:11:07 AM danharaj: like take Nat, the type of natural numbers.
+1:11:15 AM danharaj: There's all sorts of extra structure we'd like to put on Nat when we need it.
+1:11:33 AM danharaj: In Haskell you would do this with type classes which are overbearing global helicopter moms.
+1:11:55 AM edwardk: ah, this notion of decorate
+1:12:13 AM edwardk: btw- i found that fragment
+1:12:16 AM danharaj: What I think would be nice is if it were syntactically unburdensome to just say "Ok now I'm giving Nat an order with this comparison function" and then later say "What ordering?"
+1:12:18 AM edwardk: http://comonad.com/Category.ks-old
+1:12:31 AM edwardk: it has a bunch of typos, etc. but is overall rather indicative
+1:12:42 AM danharaj: edwardk: How do laws work? How do you check that they hold?
+1:12:45 AM danharaj: Are they purely syntactic?
+1:12:52 AM edwardk: they are given to the compiler, not for you =)
+1:13:31 AM edwardk: the compiler is permitted to use them for equational rewriting
+1:13:55 AM edwardk: the syntax has shifted there
+1:14:06 AM edwardk: forall f. id . f = f    — became f -> id . f = f
+1:14:07 AM danharaj: ah, so if I define a category, say, I don't have to prove that the laws are satisfied?
+1:14:11 AM edwardk: correct
+1:14:34 AM danharaj: I think it's a good thing that you've put rewrite rule specification into the language.
+1:15:01 AM edwardk: they'll probably be reflected later and made available for some kind of quickcheck tool, etc.  but they have no "teeth" to catch you at compile time
+1:15:49 AM edwardk: the module Cat : category … in that example has changed, that would be data to begin with, and that turned out to be the wrong way to define Cat the category of small categories
+1:16:08 AM edwardk: oh, which leads us to another neat language quirk
+1:16:24 AM edwardk: notice how that uses new to define the body of id and f . g?
+1:16:49 AM danharaj: yeah
+1:16:52 AM edwardk: a better way to define a category of small categories would be to say something like
+1:17:36 AM edwardk: class small-category category public id : functor; id.map f = f; _ . _ : functor; f . g .map x = f.map (g.map x)
+1:17:44 AM edwardk: data Cat : small-category category
+1:17:56 AM edwardk: and the reason is what happens when i want to define the category of applicative functors
+1:18:12 AM edwardk: with the existing definition i'd have to start over
+1:18:15 AM edwardk: but here 
+1:19:02 AM edwardk: class applicative-small-category category public id : applicative functor; id.pure x = x; …   _ . _ : applicative functor; f . g .pure x = f.pure (g.pure x); ...
+1:19:22 AM danharaj: hmm
+1:19:27 AM edwardk: er class applicative-small-category category : small-category category public ...
+1:19:49 AM danharaj: talk about combo breakers :p
+1:20:13 AM edwardk: note the fact that the 'grey box' definition of _ . _ is defining parts of the result of a function in multiple places
+1:20:14 AM edwardk: =)
+1:20:35 AM danharaj: tomorrow I will look at this again
+1:20:39 AM danharaj: I can't keep my eyes straight :p
+1:21:20 AM edwardk: so here we're introduced to higher order grey boxing. (grey boxing is where i partially define my members in the class declaration)
+1:21:27 AM edwardk: fair nuff
+1:22:14 AM danharaj: so have you figured out how many puns you can make off of kata for library names? :p
+1:24:56 AM danharaj: but more seriously, what other languages are like this?
+1:24:57 AM edwardk: haven't actually hunted for them
+1:24:59 AM edwardk: none
+1:25:20 AM edwardk: this is distinctive in that it is the only lazy object oriented language i can think of, and it takes a different approach to class inheritance
+1:25:27 AM danharaj: hmm
+1:25:28 AM edwardk: which is only made possible by being lazy
+1:26:04 AM edwardk: the type system checking inheritance details while not providing the usual guarantees also marks a unique point in the design space
+1:26:58 AM edwardk: as does the lack of ability to query if something instantiates a given class. (which is done for liskov substitutability reasons, and was an idea introduced by gilad bracha, author of self, who never actually implemented it)
+1:28:24 AM edwardk: also, most of the ideas come from old languages of my own ;)
+1:28:29 AM danharaj: :p
+1:29:02 AM danharaj: All my ideas for making toy languages revolve around mixing category theory with dependent typing, and trying to use universal properties to make theorem proving easier.
+1:29:03 AM edwardk: so it gets the benefits of 15 years of random unreleased programming language designs ;)
+1:29:18 AM edwardk: a laudable goal
+1:29:18 AM danharaj: I have no time to experiment :[
+1:29:41 AM edwardk: kata was me removing a big scary type system that i'd built from another language, and then playing with the wreckage
+1:29:49 AM danharaj: :p
+1:29:56 AM danharaj: You can do a lot of justification with just "It's universal!", I think. I'm not sure how much.
+1:30:50 AM edwardk: i'd worked on a a much bigger language, with substructural typing, effects, extended static checking, and the kitchen sink, and then started to ask myself what the core research question was
+1:31:16 AM edwardk: and in the end, i think it will prove more interesting to see if extended static checking can recover enough of the power of all of the rest that you won't miss them
+1:31:31 AM danharaj: hmm
+1:31:57 AM edwardk: by now i've pared things down to where even the ESC component is something i can bolt on later, since the core language design is nice enough to not need it right away
+1:32:31 AM danharaj: I think someone needs to come up with a perfect use case to see how this language does on a big project.
+1:32:33 AM edwardk: have you seen dana xu's ESC/Haskell work?
+1:32:39 AM danharaj: no
+1:33:05 AM danharaj: o.O
+1:33:08 AM danharaj: found her web page
+1:33:17 AM edwardk: =)
+1:33:26 AM danharaj: as far as computer science researcher go, she's a 9
+1:33:33 AM danharaj: I was expecting Dana as in a guy like Dana Scott :p
+1:33:35 AM edwardk: hahaha
+1:34:44 AM danharaj: ah this stuff looks great
+1:35:05 AM edwardk: and it works well even in the absence of a type system
+1:35:26 AM edwardk: what i love is that it gives you a stack trace… at compile time
+1:35:36 AM edwardk: much easier to reason about than ghc style errors
+1:35:46 AM danharaj: anything is easier to reason about than ghc style errors
+1:36:03 AM danharaj: except maybe C++ template noise
+1:36:17 AM edwardk: so my focus with the compiler has been to ensure that you always see errors in terms of locations in your original source code (clang-style) and to eventually give esc-style stack traces showing where things can go wrong given certain inputs)
+1:36:29 AM danharaj: that would be awesome
+1:37:25 AM edwardk: and you'll note that in that single source file i linked. i replicated all the substance of category-extras ;)
+1:37:58 AM danharaj: :p
+1:41:18 AM danharaj: now I have to go to sleep. finish what I'm currently hacking on tomorrow, then study for finals, lose a week of my life to exams, and then have intellectual and physical freedom for a couple of months :p
+1:41:40 AM edwardk: sounds good
+1:41:48 AM danharaj: good night
+1:41:49 AM edwardk: i'm going to stay up hacking on monoids for a bit
+1:41:52 AM edwardk: later man
+1:41:53 AM danharaj: best of luck
